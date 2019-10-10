@@ -102,6 +102,39 @@ static void stats_pusher_datadog(struct uwsgi_stats_pusher_instance *uspi, time_
 		um = um->next;
 	}
 
+	int spooler_id = 0;
+	struct uwsgi_spooler *uspool = uwsgi.spoolers;
+	if (uspool) {
+		if (uwsgi_buffer_append(ub, ",", 1)) goto error;
+	}
+	if (uspool && spooler_id < 10) {
+		if (uwsgi_buffer_append(ub, "{\"metric\":\"", 11)) goto error;
+		if (datadog_config.prefix) {
+			if (uwsgi_buffer_append_json(ub, datadog_config.prefix, datadog_config.prefix_len)) goto error;
+		}
+		char name[16] = {0};
+		sprintf(name, "spooler.%d.tasks", spooler_id);
+		if (uwsgi_buffer_append_json(ub, name, 15)) goto error;
+		if (uwsgi_buffer_append(ub, "\",\"points\":[[", 13)) goto error;
+		if (uwsgi_buffer_num64(ub, now)) goto error;
+		if (uwsgi_buffer_append(ub, ",", 1)) goto error;
+		if (uwsgi_buffer_num64(ub, (int64_t) uspool->tasks)) goto error;
+		if (uwsgi_buffer_append(ub, "]],\"type\":\"", 11)) goto error;
+		if (uwsgi_buffer_append(ub, "counter", 7)) goto error;
+		if (uwsgi_buffer_append(ub, "\",\"host\":\"", 10)) goto error;
+		if (datadog_config.use_canonical && datadog_config.hostname) {
+			if (uwsgi_buffer_append_json(ub, datadog_config.hostname, datadog_config.hostname_len)) goto error;
+		} else {
+			if (uwsgi_buffer_append_json(ub, uwsgi.hostname, uwsgi.hostname_len)) goto error;
+		}
+		if (uwsgi_buffer_append(ub, "\"}", 2)) goto error;
+		if (uspool->next) {
+			if (uwsgi_buffer_append(ub, ",", 1)) goto error;
+		}
+		uspool = uspool->next;
+		spooler_id++;
+	}
+
 	if (uwsgi_buffer_append(ub, "]}", 2)) goto error;
 
 	// now send the JSON to the datadog server via curl
