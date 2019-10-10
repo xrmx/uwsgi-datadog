@@ -64,27 +64,26 @@ static void stats_pusher_datadog(struct uwsgi_stats_pusher_instance *uspi, time_
 
 	struct uwsgi_metric *um = uwsgi.metrics;
 	while(um) {
+		struct uwsgi_metric metric;
 		uwsgi_rlock(uwsgi.metrics_lock);
-		int64_t value = *um->value;
-		uwsgi_rwunlock(uwsgi.metrics_lock);
+		memcpy(&metric, um, sizeof(metric));
 
 		if (um->reset_after_push){
-			uwsgi_wlock(uwsgi.metrics_lock);
 			*um->value = um->initial_value;
-			uwsgi_rwunlock(uwsgi.metrics_lock);
 		}
+		uwsgi_rwunlock(uwsgi.metrics_lock);
 
 		if (uwsgi_buffer_append(ub, "{\"metric\":\"", 11)) goto error;
 		if (datadog_config.prefix) {
 			if (uwsgi_buffer_append_json(ub, datadog_config.prefix, datadog_config.prefix_len)) goto error;
 		}
-		if (uwsgi_buffer_append_json(ub, um->name, um->name_len)) goto error;
+		if (uwsgi_buffer_append_json(ub, metric->name, metric->name_len)) goto error;
 		if (uwsgi_buffer_append(ub, "\",\"points\":[[", 13)) goto error;
 		if (uwsgi_buffer_num64(ub, now)) goto error;
 		if (uwsgi_buffer_append(ub, ",", 1)) goto error;
-		if (uwsgi_buffer_num64(ub, value)) goto error;
+		if (uwsgi_buffer_num64(ub, *metric->value)) goto error;
 		if (uwsgi_buffer_append(ub, "]],\"type\":\"", 11)) goto error;
-		if (um->type == UWSGI_METRIC_GAUGE) {
+		if (metric->type == UWSGI_METRIC_GAUGE) {
 			if (uwsgi_buffer_append(ub, "gauge", 5)) goto error;
 		} else {
 			if (uwsgi_buffer_append(ub, "counter", 7)) goto error;
@@ -96,10 +95,10 @@ static void stats_pusher_datadog(struct uwsgi_stats_pusher_instance *uspi, time_
 			if (uwsgi_buffer_append_json(ub, uwsgi.hostname, uwsgi.hostname_len)) goto error;
 		}
 		if (uwsgi_buffer_append(ub, "\"}", 2)) goto error;
-		if (um->next) {
+		if (metric->next) {
 			if (uwsgi_buffer_append(ub, ",", 1)) goto error;
 		}
-		um = um->next;
+		um = metric->next;
 	}
 
 	if (uwsgi_buffer_append(ub, "]}", 2)) goto error;
